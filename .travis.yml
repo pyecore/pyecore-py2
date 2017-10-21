@@ -1,0 +1,21 @@
+sudo: false
+language: python
+python:
+    - "2.7"
+install:
+  - pip install -U pip setuptools
+  - pip install tox-travis coveralls
+script: tox
+after_success: coveralls
+branches:
+  only:
+    - develop
+    - master
+deploy:
+  provider: pypi
+  user: $PYPI_USER
+  password: $PYPI_PASSWORD
+  distributions: "sdist bdist_wheel"
+  on:
+    branch: master
+    python: 2.7
