@@ -13,7 +13,7 @@ setup(
                  'Framework (EMF/Ecore), Python 2.7 backport'),
     long_description=open('README.rst').read(),
     keywords='model metamodel EMF Ecore MDE',
-    url='https://github.com/pyecore/pyecore',
+    url='https://github.com/pyecore/pyecore-py2',
     author='Vincent Aranega',
     author_email='vincent.aranega@gmail.com',
 
