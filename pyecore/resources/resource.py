@@ -4,15 +4,9 @@ A Resource represents a model resource and many of them can be contained in a
 ResourceSet.
 """
 from uuid import uuid4
-try:
-    from urllib.request import urlopen
-except ImportError:
-    from urllib2 import urlopen
+from urllib2 import urlopen
 from os import path
-try:
-    from collections import ChainMap
-except ImportError:
-    from chainmap import ChainMap
+from chainmap import ChainMap
 from .. import ecore as Ecore
 
 global_registry = {}
