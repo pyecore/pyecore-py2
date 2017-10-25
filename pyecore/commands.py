@@ -318,9 +318,6 @@ class CommandStack(object):
     def top(self):
         self.stack_index -= 1
 
-    def __bool__(self):
-        return self.stack_index > -1
-
     def execute(self, *commands):
         for command in commands:
             if command.can_execute:

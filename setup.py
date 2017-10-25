@@ -8,7 +8,7 @@ packages = ['pyecore',
 
 setup(
     name='pyecore-py2',
-    version='0.7.2',
+    version='0.7.3',
     description=('A Python(ic) Implementation of the Eclipse Modeling '
                  'Framework (EMF/Ecore), Python 2.7 backport'),
     long_description=open('README.rst').read(),
@@ -22,6 +22,7 @@ setup(
     include_package_data=True,
     install_requires=['enum34',
                       'chainmap',
+                      'backports.functools_lru_cache',
                       'ordered-set',
                       'lxml'],
     tests_require={'pytest'},
