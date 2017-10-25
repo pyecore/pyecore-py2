@@ -22,6 +22,7 @@ setup(
     include_package_data=True,
     install_requires=['enum34',
                       'chainmap',
+                      'backports.functools_lru_cache',
                       'ordered-set',
                       'lxml'],
     tests_require={'pytest'},
