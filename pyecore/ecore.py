@@ -55,7 +55,7 @@ class EcoreUtils(object):
     def isinstance(obj, _type):
         if obj is None:
             return True
-        elif isinstance(obj, EPlaceHolder) and not obj.resolved:
+        elif isinstance(obj, EProxy) and not obj.resolved:
             return True
         try:
             if isinstance(_type, type) and isinstance(obj, type):
@@ -811,13 +811,27 @@ class EEnum(EDataType):
                 lit_name = '_' + lit_name if (unicode(lit_name[:1], 'utf-8')
                                               .isnumeric()) \
                                           else lit_name
-                literal = EEnumLiteral(i, lit_name)
+                literal = EEnumLiteral(value=i, name=lit_name)
                 self.eLiterals.append(literal)
                 self.__setattr__(lit_name, literal)
         if default_value:
-            self.default_value = self.__getattribute__(default_value)
-        elif not default_value and literals:
-            self.default_value = self.eLiterals[0]
+            self.default_value = default_value
+
+    @property
+    def default_value(self):
+        return self.eLiterals[0] if self.eLiterals else None
+
+    @default_value.setter
+    def default_value(self, value):
+        if value in self:
+            literal = (value if isinstance(value, EEnumLiteral)
+                       else self.getEEnumLiteral(value))
+            literals = self.eLiterals
+            i = literals.index(literal)
+            literals.insert(0, literals.pop(i))
+        else:
+            raise AttributeError('Enumeration literal {} does not exist '
+                                 'in {}'.format(value, self))
 
     def __contains__(self, key):
         if isinstance(key, EEnumLiteral):
@@ -838,13 +852,16 @@ class EEnum(EDataType):
         except StopIteration:
             return None
 
+    def from_string(self, value):
+        return self.getEEnumLiteral(name=value)
+
     def __repr__(self):
         name = self.name or ''
         return '{}[{}]'.format(name, str(self.eLiterals))
 
 
 class EEnumLiteral(ENamedElement):
-    def __init__(self, value=0, name=None, **kwargs):
+    def __init__(self, name=None, value=0, **kwargs):
         super(EEnumLiteral, self).__init__(name, **kwargs)
         self.value = value
 
@@ -1141,12 +1158,10 @@ def EMetaclass(cls):
     return MetaEClass(cls.__name__, superclass, orig_vars)
 
 
-class EPlaceHolder(object):
-    def __init__(self):
-        object.__setattr__(self, 'resolved', False)
+class EProxy(EObject):
+    def __new__(cls, *args, **kwargs):
+        return object.__new__(cls)
 
-
-class EProxy(EPlaceHolder):
     def __init__(self, path=None, resource=None, wrapped=None, **kwargs):
         super(EProxy, self).__init__(**kwargs)
         super(EProxy, self).__setattr__('_wrapped', wrapped)

@@ -34,19 +34,20 @@ class JsonResource(Resource):
 
     def _uri_fragment(self, obj):
         if obj.eResource == self:
-            use_id = self._use_uuid
+            use_id = self.use_uuid
         else:
-            use_id = obj.eResource and obj.eResource._use_uuid
+            use_id = obj.eResource and obj.eResource.use_uuid
         if use_id:
             self._assign_uuid(obj)
             return obj._xmiid
         else:
             return obj.eURIFragment()
 
+    def serialize_eclass(self, eclass):
+        return '{}{}'.format(eclass.eRoot().nsURI, eclass.eURIFragment())
+
     def _to_ref_from_obj(self, obj):
-        eclass = obj.eClass
-        uri = '{}{}'.format(eclass.eRoot().nsURI,
-                            obj.eClass.eURIFragment())
+        uri = self.serialize_eclass(obj.eClass)
         ref = {'eClass': uri}
         if obj.eResource == self:
             resource_uri = ''
@@ -56,10 +57,11 @@ class JsonResource(Resource):
         return ref
 
     def _to_dict_from_obj(self, obj):
-        eclass = obj.eClass
-        uri = '{}{}'.format(eclass.eRoot().nsURI, eclass.eURIFragment())
-        d = {'eClass': uri}
+        d = {}
         containingFeature = obj.eContainmentFeature()
+        if not containingFeature or obj.eClass is not containingFeature.eType:
+            uri = self.serialize_eclass(obj.eClass)
+            d['eClass'] = uri
         for attr in obj._isset:
             is_ereference = isinstance(attr, Ecore.EReference)
             is_ref = is_ereference and not attr.containment
@@ -70,7 +72,7 @@ class JsonResource(Resource):
             if value == attr.get_default_value():
                 continue
             d[attr.name] = self.to_dict(value, is_ref=is_ref)
-            if self._use_uuid:
+            if self.use_uuid:
                 self._assign_uuid(obj)
                 d['uuid'] = obj._xmiid
         self._already_saved.append(obj)
@@ -95,25 +97,28 @@ class JsonResource(Resource):
         return decoders.resolve(uri_eclass, self)
 
     def to_obj(self, d, owning_feature=None, first=False):
-        uri_eclass = d['eClass']
         is_ref = '$ref' in d
         if is_ref:
             return Ecore.EProxy(path=d['$ref'], resource=self)
         excludes = ['eClass', '$ref', 'uuid']
-        eclass = self.resolve_eclass(uri_eclass)
+        if 'eClass' in d:
+            uri_eclass = d['eClass']
+            eclass = self.resolve_eclass(uri_eclass)
+        else:
+            eclass = owning_feature.eType
         if not eclass:
-            raise ValueError('Unknown metaclass {} for uri {}'
-                             .format(eclass, uri_eclass))
+            raise ValueError('Unknown metaclass for uri "{}"'
+                             .format(uri_eclass))
         if eclass in (Ecore.EClass.eClass, Ecore.EClass):
             inst = eclass(d['name'].encode())
             excludes.append('name')
         else:
             inst = eclass()
         if first:
-            self._use_uuid = 'uuid' in d
+            self.use_uuid = 'uuid' in d
             self.append(inst)
 
-        if self._use_uuid:
+        if self.use_uuid:
             self.uuid_dict[d['uuid']] = inst
 
         eattributes = []
@@ -155,8 +160,8 @@ class JsonResource(Resource):
                         feature.eOpposite is not owning_feature:
                     collection.extend(elements)
             elif isinstance(value, unicode):
-                inst.eSet(feature, value.encode())
-            elif not isinstance(value, str):
+                inst.eSet(feature, feature.eType.from_string(value.encode()))
+            elif isinstance(value, str):
                 inst.eSet(feature, feature.eType.from_string(value))
             else:
                 inst.eSet(feature, value)
