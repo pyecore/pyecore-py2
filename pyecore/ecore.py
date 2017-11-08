@@ -1,9 +1,20 @@
-"""
-This module is the heart of PyEcore. It defines all the basic concepts that
+"""This module is the heart of PyEcore. It defines all the basic concepts that
 are common to EMF-Java and PyEcore (EObject/EClass...).
+It defines the basic classes and behavior for PyEcore implementation:
+
+* EObject
+* EPackage
+* EClass
+* EAttribute
+* EReference
+* EDataType
+* EcoreUtils
 
 These concepts are enough if dynamic metamodel instance are handled (code
 generation is not required).
+
+In addition, ``@EMetaclass`` annotation and ``MetaEClass`` metaclass are
+used for static metamodels definition.
 """
 from functools import partial
 import sys
@@ -28,10 +39,22 @@ eSubpackages = []
 
 
 def default_eURIFragment():
+    """
+    Gets the default root URI fragment.
+
+    :return: the root URI fragment
+    :rtype: str
+    """
     return '/'
 
 
 def eURIFragment():
+    """
+    Gets the URI fragment for the Ecore module.
+
+    :return: the root URI fragment for Ecore
+    :rtype: str
+    """
     return '#/'
 
 
@@ -136,8 +159,6 @@ class Core(object):
             epackage.eURIFragment = eURIFragment
         cname = cls.name if isinstance(cls, EClassifier) else cls.__name__
         epackage.eClassifiers[cname] = cls
-        if hasattr(epackage, 'eResource'):
-            cls._eresource = epackage.eResource
         if isinstance(cls, EDataType):
             epackage.eClass.eClassifiers.append(cls)
             cls._container = epackage
@@ -178,6 +199,11 @@ class EObject(ENotifer):
 
     @property
     def eResource(self):
+        if self.eContainer():
+            try:
+                return self.eContainer().eResource
+            except AttributeError:
+                pass
         return self._eresource
 
     def eGet(self, feature):
@@ -295,12 +321,9 @@ class PyEcoreValue(object):
         if isinstance(value, EObject):
             object.__setattr__(value, '_container', self._owner)
             object.__setattr__(value, '_containment_feature', self._efeature)
-            object.__setattr__(value, '_eresource', self._owner.eResource)
         elif previous_value:
             object.__setattr__(previous_value, '_container', value)
             object.__setattr__(previous_value, '_containment_feature', value)
-            object.__setattr__(previous_value, '_eresource',
-                               value.eResource if value else None)
 
 
 class EValue(PyEcoreValue):
