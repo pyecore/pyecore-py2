@@ -80,14 +80,9 @@ class EcoreUtils(object):
             return True
         elif isinstance(obj, EProxy) and not obj.resolved:
             return True
-        try:
-            if isinstance(_type, type) and isinstance(obj, type):
-                return obj is _type or issubclass(obj, EObject)
-            elif isinstance(_type, type):
-                return isinstance(obj, _type)
-            return _type.__isinstance__(obj)
-        except AttributeError:
-            return isinstance(obj, _type) or obj is _type.eClass
+        elif isinstance(obj, _type):
+            return True
+        return _type.__isinstance__(obj)
 
     @staticmethod
     def getRoot(obj):
@@ -653,6 +648,7 @@ class EPackage(ENamedElement):
     def getEClassifier(self, name):
         return next((c for c in self.eClassifiers if c.name == name), None)
 
+    @staticmethod
     def __isinstance__(self, instance=None):
         return (instance is None and
                 (isinstance(self, EPackage) or
@@ -727,6 +723,7 @@ class EClassifier(ENamedElement):
     def __init__(self, name=None, **kwargs):
         super(EClassifier, self).__init__(name, **kwargs)
 
+    @staticmethod
     def __isinstance__(self, instance=None):
         return (instance is None and
                 (self is EClassifier or
@@ -790,11 +787,8 @@ class EDataType(EClassifier):
     def to_string(self, value):
         return str(value)
 
-    def __isinstance__(self, instance=None):
-        if instance is not None:
-            return isinstance(instance, self.eType)
-        else:
-            return isinstance(self, EDataType)
+    def __instancecheck__(self, instance):
+        return isinstance(instance, self.eType)
 
     @property
     def default_value(self):
@@ -861,11 +855,8 @@ class EEnum(EDataType):
             return key in self.eLiterals
         return any(lit for lit in self.eLiterals if lit.name == key)
 
-    def __isinstance__(self, instance=None):
-        if instance is not None:
-            return instance in self
-        else:
-            return isinstance(self, EEnum)
+    def __instancecheck__(self, instance):
+        return instance in self
 
     def getEEnumLiteral(self, name=None, value=0):
         try:
@@ -1139,11 +1130,11 @@ class EClass(EClassifier):
         return next((f for f in self._eAllOperations_gen() if f.name == name),
                     None)
 
-    def __isinstance__(self, instance=None):
-        if instance is not None:
-            return isinstance(instance, self.python_class)
-        else:
-            return isinstance(self, EClass)
+    def __isinstance__(self, instance):
+        return isinstance(instance, self)
+
+    def __instancecheck__(self, instance):
+        return isinstance(instance, self.python_class)
 
 
 # Meta methods for static EClass
@@ -1270,6 +1261,9 @@ class EProxy(EObject):
                 self._wrapped = decoded
             self.resolved = True
         self._wrapped.__setattr__(name, value)
+
+    def __instancecheck__(self, instance):
+        return True
 
 
 def abstract(cls):
