@@ -1,7 +1,7 @@
-"""
-The resource proposes all the concepts that are related to Resource handling.
-A Resource represents a model resource and many of them can be contained in a
-ResourceSet.
+""" The resource module proposes all the concepts that are related to Resource
+handling. A Resource represents a special model container that can be
+serialized. Many ``Resource`` can be contained in a ``ResourceSet``, and
+"cross-reference" each others.
 """
 from uuid import uuid4
 from urllib2 import urlopen
@@ -13,12 +13,44 @@ global_registry = {}
 
 
 class ResourceSet(object):
+    """Defines a Resource container.
+
+    A ResourceSet can contains many Resources and has the ability to create new
+    ones. It also gives a way of isolating resources from each others and to
+    "localy" register metamodels.
+
+    Resource can be created empty (using ``create_resource(...)``) or with data
+    fetched from the actual resource content (using ``get_resource(...)``).
+
+    A :py:class:`ResourceSet` contains 3 handy properties:
+
+    * ``resources`` which is a dictonary of the ResourceSet loaded resources
+      (key is the plain string URI, value: the resource).
+    * ``metamodel_registry`` which is a dictonary of the ResourceSet known
+      metamodels (key is the plain string metamodel URI, value: the metamodel
+      ``EPackage`` root)
+    * ``resource_factory`` which is a factory used by the ResourceSet to build
+      the right Resource kind regarding the URI.
+
+    .. seealso:: Resource
+    """
     def __init__(self):
         self.resources = {}
         self.metamodel_registry = ChainMap({}, global_registry)
         self.resource_factory = dict(ResourceSet.resource_factory)
 
     def create_resource(self, uri):
+        """Creates a new Resource.
+
+        The created ressource type depends on the used URI.
+
+        :param uri: the resource URI
+        :type uri: URI
+        :return: a new Resource
+        :rtype: Resource
+
+        .. seealso:: URI, Resource, XMIResource
+        """
         if isinstance(uri, str):
             uri = URI(uri)
         try:
@@ -146,6 +178,10 @@ class URI(object):
         if isinstance(uri, URI):
             other = uri.normalize()
         return path.relpath(other, normalized)
+
+    def apply_relative_from_me(self, relative_path):
+        parent_path = path.dirname(self.normalize())
+        return path.join(parent_path, relative_path)
 
 
 class HttpURI(URI):
@@ -291,8 +327,17 @@ class Resource(object):
                         if x.can_resolve(path, self)), None)
         uri, _ = self._is_external(path)
         if not decoder and uri:
-            raise TypeError('Resource "{0}" cannot be resolved'.format(uri))
+            decoder = self._try_resource_autoload(uri)
         return decoder if decoder else self
+
+    def _try_resource_autoload(self, uri):
+        try:
+            external_uri = URI(self.uri.apply_relative_from_me(uri))
+            self.resource_set.get_resource(external_uri)
+            return self.resource_set
+        except Exception:
+            raise TypeError('Resource "{0}" cannot be resolved'
+                            .format(uri))
 
     @staticmethod
     def _navigate_from(path, start_obj):
@@ -392,8 +437,6 @@ class Resource(object):
                              'but received {0} instead.'.format(type(root)))
         self.contents.append(root)
         root._eresource = self
-        for eobject in root.eAllContents():
-            eobject._eresource = self
 
     def open_out_stream(self, other=None):
         if other and not isinstance(other, URI):

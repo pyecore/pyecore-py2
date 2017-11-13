@@ -1,9 +1,20 @@
-"""
-This module is the heart of PyEcore. It defines all the basic concepts that
+"""This module is the heart of PyEcore. It defines all the basic concepts that
 are common to EMF-Java and PyEcore (EObject/EClass...).
+It defines the basic classes and behavior for PyEcore implementation:
+
+* EObject
+* EPackage
+* EClass
+* EAttribute
+* EReference
+* EDataType
+* EcoreUtils
 
 These concepts are enough if dynamic metamodel instance are handled (code
 generation is not required).
+
+In addition, ``@EMetaclass`` annotation and ``MetaEClass`` metaclass are
+used for static metamodels definition.
 """
 from functools import partial
 import sys
@@ -28,10 +39,22 @@ eSubpackages = []
 
 
 def default_eURIFragment():
+    """
+    Gets the default root URI fragment.
+
+    :return: the root URI fragment
+    :rtype: str
+    """
     return '/'
 
 
 def eURIFragment():
+    """
+    Gets the URI fragment for the Ecore module.
+
+    :return: the root URI fragment for Ecore
+    :rtype: str
+    """
     return '#/'
 
 
@@ -57,14 +80,9 @@ class EcoreUtils(object):
             return True
         elif isinstance(obj, EProxy) and not obj.resolved:
             return True
-        try:
-            if isinstance(_type, type) and isinstance(obj, type):
-                return obj is _type or issubclass(obj, EObject)
-            elif isinstance(_type, type):
-                return isinstance(obj, _type)
-            return _type.__isinstance__(obj)
-        except AttributeError:
-            return isinstance(obj, _type) or obj is _type.eClass
+        elif isinstance(obj, _type):
+            return True
+        return _type.__isinstance__(obj)
 
     @staticmethod
     def getRoot(obj):
@@ -136,8 +154,6 @@ class Core(object):
             epackage.eURIFragment = eURIFragment
         cname = cls.name if isinstance(cls, EClassifier) else cls.__name__
         epackage.eClassifiers[cname] = cls
-        if hasattr(epackage, 'eResource'):
-            cls._eresource = epackage.eResource
         if isinstance(cls, EDataType):
             epackage.eClass.eClassifiers.append(cls)
             cls._container = epackage
@@ -178,6 +194,11 @@ class EObject(ENotifer):
 
     @property
     def eResource(self):
+        if self.eContainer():
+            try:
+                return self.eContainer().eResource
+            except AttributeError:
+                pass
         return self._eresource
 
     def eGet(self, feature):
@@ -295,12 +316,9 @@ class PyEcoreValue(object):
         if isinstance(value, EObject):
             object.__setattr__(value, '_container', self._owner)
             object.__setattr__(value, '_containment_feature', self._efeature)
-            object.__setattr__(value, '_eresource', self._owner.eResource)
         elif previous_value:
             object.__setattr__(previous_value, '_container', value)
             object.__setattr__(previous_value, '_containment_feature', value)
-            object.__setattr__(previous_value, '_eresource',
-                               value.eResource if value else None)
 
 
 class EValue(PyEcoreValue):
@@ -630,6 +648,7 @@ class EPackage(ENamedElement):
     def getEClassifier(self, name):
         return next((c for c in self.eClassifiers if c.name == name), None)
 
+    @staticmethod
     def __isinstance__(self, instance=None):
         return (instance is None and
                 (isinstance(self, EPackage) or
@@ -704,6 +723,7 @@ class EClassifier(ENamedElement):
     def __init__(self, name=None, **kwargs):
         super(EClassifier, self).__init__(name, **kwargs)
 
+    @staticmethod
     def __isinstance__(self, instance=None):
         return (instance is None and
                 (self is EClassifier or
@@ -767,11 +787,8 @@ class EDataType(EClassifier):
     def to_string(self, value):
         return str(value)
 
-    def __isinstance__(self, instance=None):
-        if instance is not None:
-            return isinstance(instance, self.eType)
-        else:
-            return isinstance(self, EDataType)
+    def __instancecheck__(self, instance):
+        return isinstance(instance, self.eType)
 
     @property
     def default_value(self):
@@ -838,11 +855,8 @@ class EEnum(EDataType):
             return key in self.eLiterals
         return any(lit for lit in self.eLiterals if lit.name == key)
 
-    def __isinstance__(self, instance=None):
-        if instance is not None:
-            return instance in self
-        else:
-            return isinstance(self, EEnum)
+    def __instancecheck__(self, instance):
+        return instance in self
 
     def getEEnumLiteral(self, name=None, value=0):
         try:
@@ -913,8 +927,11 @@ class EStructuralFeature(ETypedElement):
             instance_dict[name] = value
             return
         if name not in instance_dict:
-            evalue = EValue(instance, self)
-            instance_dict[name] = evalue
+            if self.many:
+                new_value = ECollection.create(instance, self)
+            else:
+                new_value = EValue(instance, self)
+            instance_dict[name] = new_value
         previous_value = instance_dict[name]
         if isinstance(previous_value, ECollection):
             raise BadValueError(got=value, expected=previous_value.__class__)
@@ -1113,11 +1130,8 @@ class EClass(EClassifier):
         return next((f for f in self._eAllOperations_gen() if f.name == name),
                     None)
 
-    def __isinstance__(self, instance=None):
-        if instance is not None:
-            return isinstance(instance, self.python_class)
-        else:
-            return isinstance(self, EClass)
+    def __instancecheck__(self, instance):
+        return isinstance(instance, self.python_class)
 
 
 # Meta methods for static EClass
@@ -1244,6 +1258,10 @@ class EProxy(EObject):
                 self._wrapped = decoded
             self.resolved = True
         self._wrapped.__setattr__(name, value)
+
+    def __instancecheck__(self, instance):
+        self.force_resolve()
+        return self._wrapped.__instancecheck__(instance)
 
 
 def abstract(cls):
