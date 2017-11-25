@@ -340,8 +340,7 @@ class EValue(PyEcoreValue):
                              feature=efeature,
                              kind=Kind.UNSET if value is None else Kind.SET)
         owner.notify(notif)
-        if value != efeature.get_default_value:
-            owner._isset.add(efeature)
+        owner._isset.add(efeature)
 
         if not isinstance(efeature, EReference):
             return
@@ -383,8 +382,7 @@ class EValue(PyEcoreValue):
                   _set(owner, update_opposite=False)
             notif.kind = Kind.SET
             value.notify(notif)
-            if eOpposite.get_default_value != owner:
-                value._isset.add(eOpposite)
+            value._isset.add(eOpposite)
 
 
 class ECollection(PyEcoreValue):
