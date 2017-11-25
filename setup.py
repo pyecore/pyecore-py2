@@ -25,7 +25,7 @@ setup(
                       'backports.functools_lru_cache',
                       'ordered-set',
                       'lxml'],
-    tests_require={'pytest'},
+    tests_require=['pytest'],
     license='BSD 3-Clause',
     classifiers=[
         'Development Status :: 4 - Beta',
