@@ -1014,16 +1014,16 @@ class EClass(EClassifier):
             instance.python_class = type(name,
                                          instance.__compute_supertypes(),
                                          attr_dict)
-            instance.__name__ = name
+        instance.__name__ = name
+        instance.supertypes_updater = EObserver()
+        instance.supertypes_updater.notifyChanged = instance.__update
+        instance._eternal_listener.append(instance.supertypes_updater)
         return instance
 
     def __init__(self, name=None, superclass=None, abstract=False,
                  metainstance=None, **kwargs):
         super(EClass, self).__init__(name, **kwargs)
         self.abstract = abstract
-        self.supertypes_updater = EObserver()
-        self.supertypes_updater.notifyChanged = self.__update
-        self._eternal_listener.append(self.supertypes_updater)
 
     def __call__(self, *args, **kwargs):
         if self.abstract:
