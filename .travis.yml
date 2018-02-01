@@ -11,11 +11,12 @@ branches:
   only:
     - develop
     - master
+    - /^\d+.\d+.\d+$/
 deploy:
   provider: pypi
   user: $PYPI_USER
   password: $PYPI_PASSWORD
   distributions: "sdist bdist_wheel"
   on:
-    branch: master
+    tags: true
     python: 2.7
