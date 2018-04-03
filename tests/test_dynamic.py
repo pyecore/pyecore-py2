@@ -583,7 +583,7 @@ def test_update_estructuralfeature_in_eclass():
 
     A.eStructuralFeatures.append(EAttribute('name', EString))
     a.name  # We access the name
-    assert a.__dict__['name']._owner is a
+    assert a.__dict__['name'].owner is a
 
 
 def test_get_eattribute():
@@ -967,3 +967,20 @@ def test_eall_ref_attrs():
 
     assert B.eAllReferences() == {A.eStructuralFeatures[1]}
     assert B.eAllAttributes() == {A.eStructuralFeatures[0]}
+
+
+def test_allContent_derived_containment():
+    A = EClass('A')
+    A.eStructuralFeatures.append(EReference('a', A, containment=True))
+    A.eStructuralFeatures.append(EReference('b', A, derived=True,
+                                            containment=True))
+
+    a1, a2 = A(), A()
+    a1.a = a2
+    assert a2 in a1.eContents
+
+
+def test_explicit_eobject_inheritance():
+    A = EClass('A', superclass=(EObject.eClass))
+
+    assert isinstance(A, EObject)

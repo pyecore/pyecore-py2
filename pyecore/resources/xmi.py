@@ -19,6 +19,7 @@ XMI_URL = 'http://www.omg.org/XMI'
 @unique
 class XMIOptions(Enum):
     OPTION_USE_XMI_TYPE = 0
+    SERIALIZE_DEFAULT_VALUES = 1
 
 
 class XMIResource(Resource):
@@ -38,14 +39,21 @@ class XMIResource(Resource):
 
         self.xsitype = '{{{0}}}type'.format(self.prefixes.get(XSI))
         self.xmiid = '{{{0}}}id'.format(self.prefixes.get(XMI))
+
         # Decode the XMI
-        modelroot = self._init_modelroot(xmlroot)
-        if not self.contents:
-            self._clean_registers()
-            return
-        for child in xmlroot:
-            self._decode_eobject(child, modelroot)
-        self._decode_ereferences()
+        if '{{{0}}}XMI'.format(self.prefixes.get(XMI)) == xmlroot.tag:
+            real_roots = xmlroot
+        else:
+            real_roots = [xmlroot]
+
+        for root in real_roots:
+            modelroot = self._init_modelroot(root)
+            for child in root:
+                self._decode_eobject(child, modelroot)
+
+        if self.contents:
+            self._decode_ereferences()
+
         self._clean_registers()
         self.uri.close_stream()
 
@@ -93,13 +101,14 @@ class XMIResource(Resource):
             if prefix == 'xmi' and att_name == 'id':
                 modelroot._internal_id = value
                 self.uuid_dict[value] = modelroot
-            elif namespace:
-                try:
-                    # Do stuff with this
-                    # metaclass = self.get_metamodel(namespace)
-                    pass
-                except KeyError:
-                    pass
+            # Do stuff with this
+            # elif namespace:
+            #     try:
+            #
+            #         # metaclass = self.get_metamodel(namespace)
+            #         pass
+            #     except KeyError:
+            #         pass
             elif not namespace:
                 feature = self._find_in_metacache(modelroot, key)
                 if not feature:
@@ -145,6 +154,9 @@ class XMIResource(Resource):
         for child in current_node:
             self._decode_eobject(child, eobject)
 
+    def _is_none_node(self, node):
+        return '{{{}}}nil'.format(self.prefixes.get(XSI)) in node.attrib
+
     def _decode_node(self, parent_eobj, node):
         if node.tag == 'eGenericType':  # Special case, TODO
             return (None, None, [], [])
@@ -155,6 +167,9 @@ class XMIResource(Resource):
                              .format(node_tag,
                                      parent_eobj.eClass.name,
                                      node.sourceline,))
+        if self._is_none_node(node):
+            parent_eobj.__setattr__(feature_container.name, None)
+            return (None, None, [], [])
         if node.get('href'):
             ref = node.get('href')
             proxy = Ecore.EProxy(path=ref, resource=self)
@@ -189,6 +204,9 @@ class XMIResource(Resource):
                 # container.__doc__ = annotation_value
             return (None, None, [], [])
         else:
+            # idref = node.get('{{{}}}idref'.format(XMI_URL))
+            # if idref:
+            #     return (None, parent_eobj, [], [(feature_container, idref)])
             eobject = etype()
 
         # we sort the node feature (no containments)
@@ -216,8 +234,8 @@ class XMIResource(Resource):
         elif prefix in ('xsi', 'xmi') and att_name == 'type':
             # type has already been handled
             pass
-        elif namespace:
-            pass
+        # elif namespace:
+        #     pass
         elif not namespace:
             if att_name == 'href':
                 return
@@ -231,7 +249,8 @@ class XMIResource(Resource):
         opposite = []
         for eobject, erefs in self._later:
             for ref, value in erefs:
-                if ref.name == 'eOpposite':
+                name = ref.name
+                if name == 'eOpposite':
                     opposite.append((eobject, ref, value))
                     continue
                 if ref.many:
@@ -246,10 +265,9 @@ class XMIResource(Resource):
                     if not hasattr(resolved_value, '_inverse_rels'):
                         resolved_value = resolved_value.eClass
                     if ref.many:
-                        eobject.__getattribute__(ref.name) \
-                               .append(resolved_value)
+                        eobject.__getattribute__(name).append(resolved_value)
                     else:
-                        eobject.__setattr__(ref.name, resolved_value)
+                        eobject.__setattr__(name, resolved_value)
 
         for eobject, ref, value in opposite:
             resolved_value = self._resolve_nonhref(value)
@@ -294,16 +312,32 @@ class XMIResource(Resource):
         output = self.open_out_stream(output)
         self.prefixes.clear()
         self.reverse_nsmap.clear()
-        # Compute required nsmap for subpackages
-        if not self.contents:
-            tree = etree.ElementTree()
-        else:
+
+        serialize_default = \
+            self.options.get(XMIOptions.SERIALIZE_DEFAULT_VALUES,
+                             False)
+        nsmap = {XMI: XMI_URL,
+                 XSI: XSI_URL}
+
+        if len(self.contents) == 1:
             root = self.contents[0]
             self.register_eobject_epackage(root)
-            for eobj in root.eAllContents():
-                self.register_eobject_epackage(eobj)
+            tmp_xmi_root = self._go_across(root, serialize_default)
+        else:
+            tag = etree.QName(XMI_URL, 'XMI')
+            tmp_xmi_root = etree.Element(tag)
+            for root in self.contents:
+                root_node = self._go_across(root, serialize_default)
+                tmp_xmi_root.append(root_node)
 
-            tree = etree.ElementTree(self._go_across(root))
+        # update nsmap with prefixes register during the nodes creation
+        nsmap.update(self.prefixes)
+        xmi_root = etree.Element(tmp_xmi_root.tag, nsmap=nsmap)
+        xmi_root[:] = tmp_xmi_root[:]
+        xmi_root.attrib.update(tmp_xmi_root.attrib)
+        xmi_version = etree.QName(XMI_URL, 'version')
+        xmi_root.attrib[xmi_version] = '2.0'
+        tree = etree.ElementTree(xmi_root)
         tree.write(output,
                    pretty_print=True,
                    xml_declaration=True,
@@ -313,21 +347,26 @@ class XMIResource(Resource):
     def _add_explicit_type(self, node, obj):
         xsi_type = etree.QName(self.xsi_type_url(), 'type')
         uri = obj.eClass.ePackage.nsURI
+        if uri not in self.reverse_nsmap:
+            epackage = self.get_metamodel(uri)
+            self.register_nsmap(epackage.nsPrefix, uri)
         prefix = self.reverse_nsmap[uri]
         node.attrib[xsi_type] = '{0}:{1}'.format(prefix, obj.eClass.name)
 
-    def _go_across(self, obj):
+    def _build_none_node(self, feature_name):
+        sub = etree.Element(feature_name)
+        xsi_null = etree.QName(self.xsi_type_url(), 'nil')
+        sub.attrib[xsi_null] = 'true'
+        return sub
+
+    def _go_across(self, obj, serialize_default=False):
+        self.register_eobject_epackage(obj)
         eclass = obj.eClass
         if not obj.eContainmentFeature():  # obj is the root
             epackage = eclass.ePackage
             nsURI = epackage.nsURI
             tag = etree.QName(nsURI, eclass.name) if nsURI else eclass.name
-            nsmap = {XMI: XMI_URL,
-                     XSI: XSI_URL}
-            nsmap.update(self.prefixes)
-            node = etree.Element(tag, nsmap=nsmap)
-            xmi_version = etree.QName(XMI_URL, 'version')
-            node.attrib[xmi_version] = '2.0'
+            node = etree.Element(tag)
         else:
             node = etree.Element(obj.eContainmentFeature().name)
             if obj.eContainmentFeature().eType != eclass:
@@ -339,22 +378,28 @@ class XMIResource(Resource):
             node.attrib[xmi_id] = obj._internal_id
 
         for feat in obj._isset:
-            if feat.derived:
+            if feat.derived or feat.transient:
                 continue
-            value = obj.__getattribute__(feat.name)
+            feat_name = feat.name
+            value = obj.__getattribute__(feat_name)
             if hasattr(feat.eType, 'eType') and feat.eType.eType is dict:
-                tag = feat.name
                 for key, val in value.items():
-                    entry = etree.Element(tag)
+                    entry = etree.Element(feat_name)
                     entry.attrib['key'] = key
                     entry.attrib['value'] = val
                     node.append(entry)
             elif isinstance(feat, Ecore.EAttribute):
                 etype = feat.eType
                 if feat.many and value:
-                    node.attrib[feat.name] = ' '.join(etype.to_string(value))
-                elif value != feat.get_default_value():
-                    node.attrib[feat.name] = etype.to_string(value)
+                    node.attrib[feat_name] = ' '.join(etype.to_string(value))
+                    continue
+                default_value = feat.get_default_value()
+                if value != default_value or serialize_default:
+                    if value is None:
+                        node.append(self._build_none_node(feat_name))
+                    else:
+                        node.attrib[feat_name] = etype.to_string(value)
+                continue
 
             elif isinstance(feat, Ecore.EReference) and \
                     feat.eOpposite and feat.eOpposite.containment:
@@ -362,6 +407,8 @@ class XMIResource(Resource):
             elif isinstance(feat, Ecore.EReference) \
                     and not feat.containment:
                 if not value:
+                    if serialize_default and value is None:
+                        node.append(self._build_none_node(feat_name))
                     continue
                 if feat.many:
                     results = [self._build_path_from(x) for x in value]
@@ -374,23 +421,23 @@ class XMIResource(Resource):
                             embedded.append(frag)
                     if embedded:
                         result = ' '.join(embedded)
-                        node.attrib[feat.name] = result
+                        node.attrib[feat_name] = result
                     for ref in crossref:
-                        sub = etree.SubElement(node, feat.name)
+                        sub = etree.SubElement(node, feat_name)
                         sub.attrib['href'] = ref
                         self._add_explicit_type(sub, value)
                 else:
                     frag, is_crossref = self._build_path_from(value)
                     if is_crossref:
-                        sub = etree.SubElement(node, feat.name)
+                        sub = etree.SubElement(node, feat_name)
                         sub.attrib['href'] = frag
                         self._add_explicit_type(sub, value)
                     else:
-                        node.attrib[feat.name] = frag
+                        node.attrib[feat_name] = frag
 
             if isinstance(feat, Ecore.EReference) and feat.containment:
-                children = obj.__getattribute__(feat.name)
+                children = obj.__getattribute__(feat_name)
                 children = children if feat.many else [children]
                 for child in children:
-                    node.append(self._go_across(child))
+                    node.append(self._go_across(child, serialize_default))
         return node
