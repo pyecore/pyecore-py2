@@ -1,4 +1,4 @@
-from .ecore import EcoreUtils, EReference, EObject
+from .ecore import EReference, EProxy
 from .notification import Notification, Kind
 from .ordered_set_patch import ordered_set
 from collections import MutableSet, MutableSequence
@@ -9,6 +9,30 @@ class BadValueError(TypeError):
         msg = "Expected type {0}, but got type {1} with value {2} instead"
         msg = msg.format(expected, type(got).__name__, got)
         super(BadValueError, self).__init__(msg)
+
+
+class EcoreUtils(object):
+    @staticmethod
+    def isinstance(obj, _type):
+        if obj is None:
+            return True
+        elif isinstance(obj, EProxy) and not obj.resolved:
+            return True
+        elif isinstance(obj, _type):
+            return True
+        try:
+            return _type.__isinstance__(obj)
+        except AttributeError:
+            return False
+
+    @staticmethod
+    def getRoot(obj):
+        if not obj:
+            return None
+        previous = obj
+        while previous.eContainer() is not None:
+            previous = previous.eContainer()
+        return previous
 
 
 class PyEcoreValue(object):
@@ -26,12 +50,15 @@ class PyEcoreValue(object):
             return
         if not self.feature.containment:
             return
-        if isinstance(value, EObject):
-            object.__setattr__(value, '_container', self.owner)
-            object.__setattr__(value, '_containment_feature', self.feature)
-        elif previous_value:
-            object.__setattr__(previous_value, '_container', value)
-            object.__setattr__(previous_value, '_containment_feature', value)
+        if value:
+            resource = value.eResource
+            if resource and value in resource.contents:
+                resource.remove(value)
+            value._container = self.owner
+            value._containment_feature = self.feature
+        if previous_value:
+            previous_value._container = None
+            previous_value._containment_feature = None
 
 
 class EValue(PyEcoreValue):
