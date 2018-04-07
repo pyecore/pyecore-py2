@@ -1113,7 +1113,6 @@ Liberty Regarding the Java EMF Implementation
 =============================================
 
 * There is some meta-property that could be missing inside PyEcore. If you see one missing, please open a new ticket!
-* ``Resource`` can only contain a single root at the moment.
 * Proxies are not "removed" once resolved as in the the Java version, instead they acts as transparent proxies and redirect each calls to the 'proxied' object.
 * PyEcore is able to automatically load some model/metamodel dependencies on its own.
 
@@ -1147,14 +1146,15 @@ In the current state, the project implements:
 * JSON import (simple JSON format),
 * JSON export (simple JSON format),
 * introduce behavior @runtime,
-* resources auto-load for some cross-references.
+* resources auto-load for some cross-references,
+* derived collections,
+* multiple roots ressources.
 
 The things that are in the roadmap:
 
 * new implementation of ``EOrderedSet``, ``EList``, ``ESet`` and ``EBag``,
 * new implementation of ``EStringToStringMapEntry`` and ``EFeatureMapEntry``,
-* multiple roots ressources,
-* derived collections,
+* ``xsi:schemaLocation`` support for XMI resources,
 * URI mapper,
 * improve documentation,
 * copy/paste (?).

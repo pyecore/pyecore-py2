@@ -233,7 +233,6 @@ def test_ecore_attribute_at_root():
     a_ecore = path.join('tests', 'xmi', 'xmi-tests', 'A.ecore')
     root = rset.get_resource(a_ecore).contents[0]
     assert root
-    print(root.getEClassifier('Root').eStructuralFeatures)
     rset.metamodel_registry[root.nsURI] = root
 
     a_xmi = path.join('tests', 'xmi', 'xmi-tests', 'a4.xmi')
@@ -241,3 +240,104 @@ def test_ecore_attribute_at_root():
     assert root
     assert root.visible
     assert root.refa is root.a[0]
+
+
+def test_deserialize_href_uuid_ref():
+    Root = Ecore.EClass('Root')
+    Root.eStructuralFeatures.append(Ecore.EReference('element', Ecore.EObject))
+    pack = Ecore.EPackage('mypack', nsURI='http://mypack/1.0',
+                          nsPrefix='mypack_pref')
+    pack.eClassifiers.append(Root)
+
+    rset = ResourceSet()
+
+    resource = rset.get_resource('tests/xmi/xmi-tests/My.ecore')
+    root = resource.contents[0]
+    rset.metamodel_registry[root.nsURI] = root
+    rset.metamodel_registry[pack.nsURI] = pack
+
+    resource = rset.get_resource('tests/xmi/xmi-tests/encoded.xmi')
+    root1 = resource.contents[0]
+    resource = rset.get_resource('tests/xmi/xmi-tests/encoded2.xmi')
+    root2 = resource.contents[0]
+    assert root2.element.eClass is root1.eClass
+
+
+def test_load_nill_values():
+    rset = ResourceSet()
+    mm_ecore = path.join('tests', 'xmi', 'xmi-tests', 'mm_for_nil.ecore')
+    root = rset.get_resource(mm_ecore).contents[0]
+    rset.metamodel_registry[root.nsURI] = root
+
+    model = path.join('tests', 'xmi', 'xmi-tests', 'model_with_nil.xmi')
+    root = rset.get_resource(model).contents[0]
+    assert root
+    set_features = [x.name for x in root._isset]
+    assert 'name' in set_features
+    assert 'element' in set_features
+    assert root.name is None
+    assert root.element is None
+
+
+def test_load_empty_xmi():
+    rset = ResourceSet()
+    empty = path.join('tests', 'xmi', 'xmi-tests', 'empty.xmi')
+
+    resource = rset.get_resource(empty)
+    assert resource.contents == []
+
+
+def test_load_multi_root_ecore():
+    rset = ResourceSet()
+    multi_root = path.join('tests', 'xmi', 'xmi-tests', 'multi_root.xmi')
+
+    resource = rset.get_resource(multi_root)
+    assert len(resource.contents) == 2
+
+    root1 = resource.contents[0]
+    assert root1.eClassifiers[0].name == 'A'
+
+    root2 = resource.contents[1]
+    assert root2.eClassifiers[0].name == 'B'
+
+    A = root1.eClassifiers[0]
+    B = root2.eClassifiers[0]
+    assert B.findEStructuralFeature('to_a').eType is A
+
+
+def test_load_multivalued_attribute():
+    rset = ResourceSet()
+    b_ecore = path.join('tests', 'xmi', 'xmi-tests', 'B.ecore')
+    b_ecore_root = rset.get_resource(b_ecore).contents[0]
+    rset.metamodel_registry[b_ecore_root.nsURI] = b_ecore_root
+
+    b2_xmi = path.join('tests', 'xmi', 'xmi-tests', 'b2.xmi')
+    root = rset.get_resource(b2_xmi).contents[0]
+    assert root.names == ['abc', 'def', 'ghi']
+
+    b3_xmi = path.join('tests', 'xmi', 'xmi-tests', 'b3.xmi')
+    root = rset.get_resource(b3_xmi).contents[0]
+    assert root.names == ['abc']
+
+
+def test_load_multipleroot_with_refs():
+    rset = ResourceSet()
+    multi_root = path.join('tests', 'xmi', 'xmi-tests',
+                           'multiple_with_refs.xmi')
+
+    package = Ecore.EPackage('amm', 'ammuri', 'amm')
+    A = Ecore.EClass('A')
+    A.eStructuralFeatures.append(Ecore.EAttribute('name', Ecore.EString))
+    A.eStructuralFeatures.append(Ecore.EReference('toa', A))
+    A.eStructuralFeatures.append(Ecore.EReference('contains', A,
+                                                  containment=True))
+    package.eClassifiers.append(A)
+
+    rset.metamodel_registry[package.nsURI] = package
+    resource = rset.get_resource(URI(str(multi_root)))
+
+    root1, root2 = resource.contents
+    assert root1.contains.toa is root2
+    assert root1.name == 'root1'
+    assert root2.name == 'root2'
+    assert root1.contains.name == 'inner'
