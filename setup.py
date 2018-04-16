@@ -24,6 +24,7 @@ setup(
                       'chainmap',
                       'backports.functools_lru_cache',
                       'ordered-set',
+                      'singledispatch',
                       'lxml'],
     tests_require=['pytest'],
     license='BSD 3-Clause',
