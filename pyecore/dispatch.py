@@ -2,6 +2,7 @@ from .ecore import EObject
 from functools import update_wrapper
 from singledispatch import singledispatch
 
+
 def dispatch(func):
     dispatcher = singledispatch(func)
 

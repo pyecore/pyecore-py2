@@ -23,7 +23,7 @@ from decimal import Decimal
 from datetime import datetime
 from ordered_set import OrderedSet
 from .notification import ENotifer, Kind, EObserver
-from .javatransmap import javaTransMap
+from .innerutils import ignored, javaTransMap
 
 
 name = 'ecore'
@@ -76,10 +76,8 @@ class Core(object):
         for _cls in cls.__bases__:
             if _cls is EObject:
                 continue
-            try:
+            with ignored(Exception):
                 eSuperTypes_add(_cls.eClass)
-            except Exception:
-                pass
         # init eclass by reflection
         eStructuralFeatures_add = cls.eClass.eStructuralFeatures.append
         for k, feature in cls.__dict__.items():
@@ -166,10 +164,8 @@ class EObject(ENotifer):
     @property
     def eResource(self):
         if self.eContainer():
-            try:
+            with ignored(AttributeError):
                 return self.eContainer().eResource
-            except AttributeError:
-                pass
         return self._eresource
 
     def eGet(self, feature):
@@ -190,7 +186,8 @@ class EObject(ENotifer):
 
     def delete(self, recursive=True):
         if recursive:
-            [obj.delete() for obj in self.eAllContents()]
+            for obj in self.eAllContents():
+                obj.delete()
         seek = set(self._inverse_rels)
         # we also clean all the object references
         seek.update((self, ref) for ref in self.eClass.eAllReferences())
@@ -268,7 +265,7 @@ class EObject(ENotifer):
         eclass = self.eClass
         relevant = [x.name for x in eclass.eAllStructuralFeatures()]
         relevant.extend([x.name for x in eclass.eAllOperations()
-                        if not x.name.startswith('_')])
+                         if not x.name.startswith('_')])
         return relevant
 
 
@@ -320,9 +317,9 @@ class EPackage(ENamedElement):
 
     @staticmethod
     def __isinstance__(self, instance=None):
-        return (instance is None and
-                (isinstance(self, EPackage) or
-                 inspect.ismodule(self) and hasattr(self, 'nsURI')))
+        return (instance is None
+                and (isinstance(self, EPackage)
+                     or inspect.ismodule(self) and hasattr(self, 'nsURI')))
 
 
 class ETypedElement(ENamedElement):
@@ -404,10 +401,10 @@ class EClassifier(ENamedElement):
 
     @staticmethod
     def __isinstance__(self, instance=None):
-        return (instance is None and
-                (self is EClassifier or
-                 isinstance(self, (EClassifier, MetaEClass)) or
-                 getattr(self, '_staticEClass', False)))
+        return (instance is None
+                and (self is EClassifier
+                     or isinstance(self, (EClassifier, MetaEClass))
+                     or getattr(self, '_staticEClass', False)))
 
 
 class EDataType(EClassifier):
@@ -648,7 +645,9 @@ class EClass(EClassifier):
             raise BadValueError(got=name, expected=str)
         instance = super(EClass, cls).__new__(cls)
         if isinstance(superclass, tuple):
-            [instance.eSuperTypes.append(x) for x in superclass]
+            eSuperType_append = instance.eSuperTypes.append
+            for x in superclass:
+                eSuperType_append(x)
         elif isinstance(superclass, EClass):
             instance.eSuperTypes.append(superclass)
         if metainstance:
@@ -854,7 +853,8 @@ class EProxy(EObject):
 
     def delete(self, recursive=True):
         if recursive and self.resolved:
-            [obj.delete() for obj in self.eAllContents()]
+            for obj in self.eAllContents():
+                obj.delete()
 
         seek = set(self._inverse_rels)
         if self.resolved:
@@ -946,17 +946,16 @@ EBoolean = EDataType('EBoolean', bool, False,
 EBooleanObject = EDataType('EBooleanObject', bool,
                            to_string=lambda x: str(x).lower(),
                            from_string=lambda x: x in ['True', 'true'])
-EInteger = EDataType('EInteger', int, 0, from_string=lambda x: int(x))
-EInt = EDataType('EInt', int, 0, from_string=lambda x: int(x))
-ELong = EDataType('ELong', int, 0, from_string=lambda x: int(x))
-ELongObject = EDataType('ELongObject', int, from_string=lambda x: int(x))
-EIntegerObject = EDataType('EIntegerObject', int, from_string=lambda x: int(x))
-EBigInteger = EDataType('EBigInteger', int, from_string=lambda x: int(x))
-EDouble = EDataType('EDouble', float, 0.0, from_string=lambda x: float(x))
-EDoubleObject = EDataType('EDoubleObject', float,
-                          from_string=lambda x: float(x))
-EFloat = EDataType('EFloat', float, 0.0, from_string=lambda x: float(x))
-EFloatObject = EDataType('EFloatObject', float, from_string=lambda x: float(x))
+EInteger = EDataType('EInteger', int, 0, from_string=int)
+EInt = EDataType('EInt', int, 0, from_string=int)
+ELong = EDataType('ELong', int, 0, from_string=int)
+ELongObject = EDataType('ELongObject', int, from_string=int)
+EIntegerObject = EDataType('EIntegerObject', int, from_string=int)
+EBigInteger = EDataType('EBigInteger', int, from_string=int)
+EDouble = EDataType('EDouble', float, 0.0, from_string=float)
+EDoubleObject = EDataType('EDoubleObject', float, from_string=float)
+EFloat = EDataType('EFloat', float, 0.0, from_string=float)
+EFloatObject = EDataType('EFloatObject', float, from_string=float)
 EStringToStringMapEntry = EDataType('EStringToStringMapEntry', dict,
                                     type_as_factory=True)
 EFeatureMapEntry = EDataType('EFeatureMapEntry', dict, type_as_factory=True)
@@ -964,14 +963,13 @@ EDiagnosticChain = EDataType('EDiagnosticChain', str)
 ENativeType = EDataType('ENativeType', object)
 EJavaObject = EDataType('EJavaObject', object)
 EDate = EDataType('EDate', datetime)
-EBigDecimal = EDataType('EBigDecimal', Decimal,
-                        from_string=lambda x: Decimal(x))
+EBigDecimal = EDataType('EBigDecimal', Decimal, from_string=Decimal)
 EByte = EDataType('EByte', bytes)
 EByteObject = EDataType('EByteObject', bytes)
 EByteArray = EDataType('EByteArray', bytearray)
 EChar = EDataType('EChar', str)
 ECharacterObject = EDataType('ECharacterObject', str)
-EShort = EDataType('EShort', int, from_string=lambda x: int(x))
+EShort = EDataType('EShort', int, from_string=int)
 EJavaClass = EDataType('EJavaClass', type)
 
 

@@ -25,7 +25,8 @@ setup(
                       'backports.functools_lru_cache',
                       'ordered-set',
                       'singledispatch',
-                      'lxml'],
+                      'lxml',
+                      'defusedxml'],
     tests_require=['pytest'],
     license='BSD 3-Clause',
     classifiers=[
