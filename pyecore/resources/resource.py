@@ -297,7 +297,7 @@ class Resource(object):
 
     @staticmethod
     def extract_rootnum_and_frag(fragment):
-        if re.match('^/\d+.*', fragment):
+        if re.match(r'^/\d+.*', fragment):
             fragment = fragment[1:]
             if '/' in fragment:
                 index = fragment.index('/')

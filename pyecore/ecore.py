@@ -22,7 +22,7 @@ import inspect
 from decimal import Decimal
 from datetime import datetime
 from ordered_set import OrderedSet
-from .notification import ENotifer, Kind, EObserver
+from .notification import ENotifer, Kind
 from .innerutils import ignored, javaTransMap
 
 
@@ -67,20 +67,20 @@ def getEClassifier(name, searchspace=None):
 
 class Core(object):
     @staticmethod
-    def _promote(cls, abstract=False):
-        cls.eClass = EClass(cls.__name__, metainstance=cls)
-        cls.eClass.abstract = abstract
-        cls._staticEClass = True
+    def _promote(rcls, abstract=False):
+        rcls.eClass = EClass(rcls.__name__, metainstance=rcls)
+        rcls.eClass.abstract = abstract
+        rcls._staticEClass = True
         # init super types
-        eSuperTypes_add = cls.eClass.eSuperTypes.append
-        for _cls in cls.__bases__:
+        eSuperTypes_add = rcls.eClass.eSuperTypes.append
+        for _cls in rcls.__bases__:
             if _cls is EObject:
                 continue
             with ignored(Exception):
                 eSuperTypes_add(_cls.eClass)
         # init eclass by reflection
-        eStructuralFeatures_add = cls.eClass.eStructuralFeatures.append
-        for k, feature in cls.__dict__.items():
+        eStructuralFeatures_add = rcls.eClass.eStructuralFeatures.append
+        for k, feature in rcls.__dict__.items():
             if isinstance(feature, EStructuralFeature):
                 if not feature.name:
                     feature.name = k
@@ -101,13 +101,13 @@ class Core(object):
                     if i < nb_required:
                         parameter.required = True
                     operation.eParameters.append(parameter)
-                cls.eClass.eOperations.append(operation)
+                rcls.eClass.eOperations.append(operation)
 
-    @staticmethod
-    def register_classifier(cls, abstract=False, promote=False):
+    @classmethod
+    def register_classifier(cls, rcls, abstract=False, promote=False):
         if promote:
-            Core._promote(cls, abstract)
-        epackage = sys.modules[cls.__module__]
+            cls._promote(rcls, abstract)
+        epackage = sys.modules[rcls.__module__]
         if not hasattr(epackage, 'eClassifiers'):
             eclassifs = {}
             epackage.eClassifiers = eclassifs
@@ -121,14 +121,14 @@ class Core(object):
                                        nsURI='http://{}/'.format(pack_name))
         if not hasattr(epackage, 'eURIFragment'):
             epackage.eURIFragment = eURIFragment
-        cname = cls.name if isinstance(cls, EClassifier) else cls.__name__
-        epackage.eClassifiers[cname] = cls
-        if isinstance(cls, EDataType):
-            epackage.eClass.eClassifiers.append(cls)
-            cls._container = epackage
+        cname = rcls.name if isinstance(rcls, EClassifier) else rcls.__name__
+        epackage.eClassifiers[cname] = rcls
+        if isinstance(rcls, EDataType):
+            epackage.eClass.eClassifiers.append(rcls)
+            rcls._container = epackage
         else:
-            epackage.eClass.eClassifiers.append(cls.eClass)
-            cls.eClass._container = epackage
+            epackage.eClass.eClassifiers.append(rcls.eClass)
+            rcls.eClass._container = epackage
 
 
 class EObject(ENotifer):
@@ -332,6 +332,17 @@ class ETypedElement(ENamedElement):
         self.ordered = ordered
         self.unique = unique
         self.required = required
+        self._many_cache = self._compute_many()
+        self._eternal_listener.append(self)
+
+    def _compute_many(self):
+        upper = self.upperBound
+        lower = self.lowerBound
+        return upper < 0 or upper > 1 and upper - lower > 1
+
+    def notifyChanged(self, notif):
+        if notif.feature is ETypedElement.upperBound:
+            self._many_cache = self._compute_many()
 
     @property
     def upper(self):
@@ -343,8 +354,7 @@ class ETypedElement(ENamedElement):
 
     @property
     def many(self):
-        upperbound = self.upperBound
-        return upperbound < 0 or upperbound > 1
+        return self._many_cache
 
 
 class EOperation(ETypedElement):
@@ -542,9 +552,9 @@ class EStructuralFeature(ETypedElement):
         self.derived = derived
         self.derived_class = derived_class or ECollection
         self._name = name
-        self._eternal_listener.append(self)
 
     def notifyChanged(self, notif):
+        super(EStructuralFeature, self).notifyChanged(notif)
         if notif.feature is ENamedElement.name:
             self._name = notif.new
 
@@ -561,9 +571,9 @@ class EStructuralFeature(ETypedElement):
             instance_dict[name] = new_value
             return new_value._get()
         value = instance_dict[name]
-        if type(value) is EValue:
+        try:
             return value._get()
-        else:
+        except AttributeError:
             return value
 
     def __set__(self, instance, value):
@@ -666,15 +676,13 @@ class EClass(EClassifier):
                                          instance.__compute_supertypes(),
                                          attr_dict)
         instance.__name__ = name
-        instance.supertypes_updater = EObserver()
-        instance.supertypes_updater.notifyChanged = instance.__update
-        instance._eternal_listener.append(instance.supertypes_updater)
         return instance
 
     def __init__(self, name=None, superclass=None, abstract=False,
                  metainstance=None, **kwargs):
         super(EClass, self).__init__(name, **kwargs)
         self.abstract = abstract
+        self._eternal_listener.append(self)
 
     def __call__(self, *args, **kwargs):
         if self.abstract:
@@ -682,7 +690,7 @@ class EClass(EClassifier):
                             .format(self.name))
         return self.python_class(*args, **kwargs)
 
-    def __update(self, notif):
+    def notifyChanged(self, notif):
         # We do not update in case of static metamodel (could be changed)
         if getattr(self.python_class, '_staticEClass', False):
             return
