@@ -1,6 +1,25 @@
 Changelog
 ---------
 
+0.8.2
++++++
+
+**Bugfixes**
+
+- Fixed ``many`` faulty computation in cases where ``upper == lower > 1``. This
+  case is not very common, but it could occurs.
+- Fixed missing deserialization for ``EDate`` datatype. The missing method on
+  resulted in a bad ``str`` object conversion leading to an exception as the
+  a ``datetime`` object was expected instead of a ``str``.
+
+**Miscellaneous**
+
+- Improve ``many`` derived attribute computation, resulting in performance
+  improvements.
+- Add performance improvement tweaks.
+- Move ``dispatch`` from ``pyecore.dispatch`` to ``pyecore.utils``
+
+
 0.8.1
 +++++
 
@@ -9,7 +28,7 @@ Changelog
 - Add ``dispatch`` decorator to mimic the ``doSwitch`` from EMF. This
   implementation relies on the use of the ``singleDispatch`` decorator and does
   not include a ``ComposedSwitch`` equivalent as some restrictions from EMF are
-  no longer an issue in Python. 
+  no longer an issue in Python.
 
 
 **Bugfixes**
@@ -17,6 +36,10 @@ Changelog
 - Fixed ``lower`` and ``upper`` derived attributes computation. The previous
   implementation were considering the attributes as normal ones instead of
   derived ones.
+
+- Fixed merge issue during ``0.8.0`` release. A case test was not properly
+  working, and models which have crossref towards models that were using
+  UUID raised an exception.
 
 **Miscellaneous**
 
