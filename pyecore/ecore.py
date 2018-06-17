@@ -80,7 +80,7 @@ class Core(object):
                 eSuperTypes_add(_cls.eClass)
         # init eclass by reflection
         eStructuralFeatures_add = rcls.eClass.eStructuralFeatures.append
-        for k, feature in rcls.__dict__.items():
+        for k, feature in rcls.__dict__.iteritems():
             if isinstance(feature, EStructuralFeature):
                 if not feature.name:
                     feature.name = k
@@ -665,7 +665,7 @@ class EClass(EClassifier):
             instance.__name__ = metainstance.__name__
         else:
             def new_init(self, *args, **kwargs):
-                for name, value in kwargs.items():
+                for name, value in kwargs.iteritems():
                     setattr(self, name, value)
             attr_dict = {
                 'eClass': instance,
@@ -793,6 +793,9 @@ class EClass(EClassifier):
 
     def __instancecheck__(self, instance):
         return isinstance(instance, self.python_class)
+
+    def __subclasscheck__(self, cls):
+        return issubclass(cls, self.python_class)
 
 
 # Meta methods for static EClass
@@ -988,7 +991,8 @@ EAnnotation.eModelElement = EReference('eModelElement', EModelElement,
 EAnnotation.source = EAttribute('source', EString)
 EAnnotation.details = EAttribute('details', EStringToStringMapEntry)
 EAnnotation.references = EReference('references', EObject, upper=-1)
-EAnnotation.contents = EReference('contents', EObject, upper=-1)
+EAnnotation.contents = EReference('contents', EObject, upper=-1,
+                                  containment=True)
 
 ETypedElement.ordered = EAttribute('ordered', EBoolean, default_value=True)
 ETypedElement.unique = EAttribute('unique', EBoolean, default_value=True)

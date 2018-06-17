@@ -35,16 +35,30 @@ class XMIResource(Resource):
         tree = etree.parse(self.uri.create_instream())
         xmlroot = tree.getroot()
         self.prefixes.update(xmlroot.nsmap)
-        self.reverse_nsmap = {v: k for k, v in self.prefixes.items()}
+        self.reverse_nsmap = {v: k for k, v in self.prefixes.iteritems()}
 
         self.xsitype = '{{{0}}}type'.format(self.prefixes.get(XSI))
         self.xmiid = '{{{0}}}id'.format(self.prefixes.get(XMI))
+        self.schema_tag = '{{{0}}}schemaLocation'.format(
+                            self.prefixes.get(XSI))
 
         # Decode the XMI
         if '{{{0}}}XMI'.format(self.prefixes.get(XMI)) == xmlroot.tag:
             real_roots = xmlroot
         else:
             real_roots = [xmlroot]
+
+        def grouper(iterable):
+            args = [iter(iterable)] * 2
+            return zip(*args)
+
+        schema_tag_list = xmlroot.attrib.get(self.schema_tag)
+        if schema_tag_list:
+            self.schema_locations = {prefix: Ecore.EProxy(path, self)
+                                     for prefix, path in
+                                     grouper(schema_tag_list.split())}
+        else:
+            self.schema_locations = {}
 
         for root in real_roots:
             modelroot = self._init_modelroot(root)
@@ -85,17 +99,27 @@ class XMIResource(Resource):
                 self.xsitype = xmi_type_url
         return type_
 
+    def _get_metaclass(self, nsURI, eclass_name):
+        try:
+            return self.get_metamodel(nsURI).getEClassifier(eclass_name)
+        except Exception as e:
+            proxy = self.schema_locations[nsURI]
+            try:
+                return proxy.getEClassifier(eclass_name)
+            except Exception:
+                raise e
+
     def _init_modelroot(self, xmlroot):
         nsURI, eclass_name = self.extract_namespace(xmlroot.tag)
-        eobject = self.get_metamodel(nsURI).getEClassifier(eclass_name)
+        eobject = self._get_metaclass(nsURI, eclass_name)
         if not eobject:
-            raise TypeError('{0} EClass does not exists'.format(eclass_name))
+            raise TypeError('"{0}" EClass does not exists'.format(eclass_name))
         modelroot = eobject()
         modelroot._eresource = self
         self.use_uuid = xmlroot.get(self.xmiid) is not None
         self.contents.append(modelroot)
         erefs = []
-        for key, value in xmlroot.attrib.items():
+        for key, value in xmlroot.attrib.iteritems():
             namespace, att_name = self.extract_namespace(key)
             prefix = self.reverse_nsmap[namespace] if namespace else None
             if prefix == 'xmi' and att_name == 'id':
@@ -134,8 +158,6 @@ class XMIResource(Resource):
     def _decode_eobject(self, current_node, parent_eobj):
         eobject_info = self._decode_node(parent_eobj, current_node)
         feat_container, eobject, eatts, erefs = eobject_info
-        if not feat_container:
-            return
 
         # deal with eattributes and ereferences
         for eattribute, value in eatts:
@@ -144,10 +166,13 @@ class XMIResource(Resource):
         if erefs:
             self._later.append((eobject, erefs))
 
+        if not feat_container:
+            return
+
         # attach the new eobject to the parent one
-        if feat_container and feat_container.many:
+        if feat_container.many:
             parent_eobj.__getattribute__(feat_container.name).append(eobject)
-        elif feat_container:
+        else:
             parent_eobj.__setattr__(feat_container.name, eobject)
 
         # iterate on children
@@ -163,7 +188,7 @@ class XMIResource(Resource):
         _, node_tag = self.extract_namespace(node.tag)
         feature_container = self._find_in_metacache(parent_eobj, node_tag)
         if not feature_container:
-            raise ValueError('Feature {0} is unknown for {1}, line {2}'
+            raise ValueError('Feature "{0}" is unknown for {1}, line {2}'
                              .format(node_tag,
                                      parent_eobj.eClass.name,
                                      node.sourceline,))
@@ -197,12 +222,17 @@ class XMIResource(Resource):
             annotation_key = node.get('key')
             annotation_value = node.get('value')
             parent_eobj.details[annotation_key] = annotation_value
-            if annotation_key == 'documentation':
-                container = parent_eobj.eContainer()
-                if hasattr(container, 'python_class'):
-                    container = container.python_class
-                # container.__doc__ = annotation_value
-            return (None, None, [], [])
+            # if annotation_key == 'documentation':
+            #     container = parent_eobj.eContainer()
+            #     if hasattr(container, 'python_class'):
+            #         container = container.python_class
+            #     container.__doc__ = annotation_value
+            return (None, None, tuple(), tuple())
+        elif node.text and node.text.strip():
+            key = node.tag
+            value = node.text
+            feature = self._decode_attribute(parent_eobj, key, value)
+            return (None, parent_eobj, ((feature, value),), tuple())
         else:
             # idref = node.get('{{{}}}idref'.format(XMI_URL))
             # if idref:
@@ -212,7 +242,7 @@ class XMIResource(Resource):
         # we sort the node feature (no containments)
         eatts = []
         erefs = []
-        for key, value in node.attrib.items():
+        for key, value in node.attrib.iteritems():
             feature = self._decode_attribute(eobject, key, value)
             if not feature:
                 continue  # we skip the unknown features
@@ -385,7 +415,7 @@ class XMIResource(Resource):
             feat_name = feat.name
             value = obj.__getattribute__(feat_name)
             if hasattr(feat.eType, 'eType') and feat.eType.eType is dict:
-                for key, val in value.items():
+                for key, val in value.iteritems():
                     entry = etree.Element(feat_name)
                     entry.attrib['key'] = key
                     entry.attrib['value'] = val
@@ -416,18 +446,19 @@ class XMIResource(Resource):
                     results = [self._build_path_from(x) for x in value]
                     embedded = []
                     crossref = []
-                    for frag, cref in results:
+                    for i, result in enumerate(results):
+                        frag, cref = result
                         if cref:
-                            crossref.append(frag)
+                            crossref.append((i, frag))
                         else:
                             embedded.append(frag)
                     if embedded:
                         result = ' '.join(embedded)
                         node.attrib[feat_name] = result
-                    for ref in crossref:
+                    for i, ref in crossref:
                         sub = etree.SubElement(node, feat_name)
                         sub.attrib['href'] = ref
-                        self._add_explicit_type(sub, value)
+                        self._add_explicit_type(sub, value[i])
                 else:
                     frag, is_crossref = self._build_path_from(value)
                     if is_crossref:
