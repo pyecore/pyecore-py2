@@ -234,6 +234,8 @@ class XMIResource(Resource):
         elif node.text and node.text.strip():
             key = node.tag
             value = node.text
+            if isinstance(value, unicode):
+                value = value.encode('utf-8')
             feature = self._decode_attribute(parent_eobj, key, value)
             return (None, parent_eobj, ((feature, value),), tuple(), True)
         else:

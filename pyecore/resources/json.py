@@ -186,7 +186,8 @@ class JsonResource(Resource):
                         feature.eOpposite is not owning_feature:
                     collection.extend(elements)
             elif isinstance(value, unicode):
-                inst.eSet(feature, feature.eType.from_string(value.encode()))
+                inst.eSet(feature,
+                          feature.eType.from_string(value.encode('utf-8')))
             elif isinstance(value, str):
                 inst.eSet(feature, feature.eType.from_string(value))
             else:
