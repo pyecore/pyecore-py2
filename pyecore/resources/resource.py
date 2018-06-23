@@ -90,10 +90,9 @@ class ResourceSet(object):
     def can_resolve(self, uri_path, from_resource=None):
         uri_path = Resource.normalize(uri_path)
         fragment = uri_path.rsplit('#', 1)
-        if len(fragment) == 2:
+        nb_fragments = len(fragment)
+        if nb_fragments == 2:
             uri_str, fragment = fragment
-        else:
-            return False
         if uri_str in self.resources:
             return True
         start = from_resource.uri.normalize() if from_resource else '.'
@@ -181,12 +180,13 @@ class URI(object):
             return self._uri_norm.get(self.protocol, lambda x: x)(self.plain)
         return path.abspath(self.plain)
 
-    def relative_from_me(self, uri):
+    def relative_from_me(self, other_uri):
         normalized = path.dirname(self.normalize())
-        other = uri
-        if isinstance(uri, URI):
-            other = uri.normalize()
-        return path.relpath(other, normalized)
+        if isinstance(other_uri, URI):
+            other_normalized = other_uri.normalize()
+            if other_uri.protocol:
+                return other_normalized
+        return path.relpath(other_normalized, normalized)
 
     def apply_relative_from_me(self, relative_path):
         parent_path = path.dirname(self.normalize())
