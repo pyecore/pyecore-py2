@@ -1,6 +1,13 @@
 Changelog
 ---------
 
+0.8.4
++++++
+
+**Bugfixes**
+
+- Fix issue with empty strings in XMI for 'many' ``EAttribute``. 
+
 0.8.3
 +++++
 
@@ -17,6 +24,8 @@ Changelog
 - Fix bad containment feature value for ``contents`` on ``EAnnotation``.
 - Fix resource resolving for non-trivial ``URI``.
 - Fix bad crossreferences serialization for "many" features (collections).
+- Fix issue for strings serialization in 'many' ``EAttribute``. Issue where
+  happening when whitespaces were in a String for 'many' ``EAttribute``.
 
 0.8.2
 +++++
