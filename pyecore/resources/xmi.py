@@ -25,7 +25,6 @@ class XMIOptions(Enum):
 class XMIResource(Resource):
     def __init__(self, uri=None, use_uuid=False):
         super(XMIResource, self).__init__(uri, use_uuid)
-        self._meta_cache = {}
         self._later = []
         self.prefixes = {}
         self.reverse_nsmap = {}
@@ -80,15 +79,6 @@ class XMIResource(Resource):
         qname = etree.QName(tag)
         return qname.namespace, qname.localname
 
-    def _find_in_metacache(self, obj, name):
-        fname = obj.eClass.name + '#' + name
-        try:
-            return self._meta_cache[fname]
-        except KeyError:
-            feat = obj.eClass.findEStructuralFeature(name)
-            self._meta_cache[fname] = feat
-            return feat
-
     def _type_attribute(self, node):
         type_ = node.get(self.xsitype)
         if type_ is None:
@@ -110,10 +100,10 @@ class XMIResource(Resource):
 
     def _init_modelroot(self, xmlroot):
         nsURI, eclass_name = self.extract_namespace(xmlroot.tag)
-        eobject = self._get_metaclass(nsURI, eclass_name)
-        if not eobject:
+        eclass = self._get_metaclass(nsURI, eclass_name)
+        if not eclass:
             raise TypeError('"{0}" EClass does not exists'.format(eclass_name))
-        modelroot = eobject()
+        modelroot = eclass()
         modelroot._eresource = self
         self.use_uuid = xmlroot.get(self.xmiid) is not None
         self.contents.append(modelroot)
@@ -133,7 +123,7 @@ class XMIResource(Resource):
             #     except KeyError:
             #         pass
             elif not namespace:
-                feature = self._find_in_metacache(modelroot, key)
+                feature = self._find_feature(modelroot.eClass, key)
                 if not feature:
                     continue
                 if isinstance(feature, Ecore.EAttribute):
@@ -189,7 +179,7 @@ class XMIResource(Resource):
         if node.tag == 'eGenericType':  # Special case, TODO
             return (None, None, [], [], False)
         _, node_tag = self.extract_namespace(node.tag)
-        feature_container = self._find_in_metacache(parent_eobj, node_tag)
+        feature_container = self._find_feature(parent_eobj.eClass, node_tag)
         if not feature_container:
             raise ValueError('Feature "{0}" is unknown for {1}, line {2}'
                              .format(node_tag,
@@ -278,7 +268,7 @@ class XMIResource(Resource):
         elif not namespace:
             if att_name == 'href':
                 return
-            feature = self._find_in_metacache(owner, att_name)
+            feature = self._find_feature(owner.eClass, att_name)
             if not feature:
                 raise ValueError('Feature {0} does not exists for type {1}'
                                  .format(att_name, owner.eClass.name))
@@ -326,7 +316,7 @@ class XMIResource(Resource):
 
     def _clean_registers(self):
         del self._later[:]
-        self._meta_cache.clear()
+        self._feature_cache.clear()
         self._resolve_mem.clear()
 
     def register_nsmap(self, prefix, uri):
