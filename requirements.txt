@@ -1,0 +1,9 @@
+ordered-set
+lxml
+defusedxml
+restrictedpython>=4.0b6
+enum34
+chainmap
+backports.functools_lru_cache
+ordered-set
+singledispatch

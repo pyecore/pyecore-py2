@@ -8,7 +8,7 @@ packages = ['pyecore',
 
 setup(
     name='pyecore-py2',
-    version='0.9.0-dev',
+    version='0.9.0',
     description=('A Python(ic) Implementation of the Eclipse Modeling '
                  'Framework (EMF/Ecore), Python 2.7 backport'),
     long_description=open('README.rst').read(),
@@ -26,7 +26,8 @@ setup(
                       'ordered-set',
                       'singledispatch',
                       'lxml',
-                      'defusedxml'],
+                      'defusedxml',
+                      'restrictedpython>=4.0b6'],
     tests_require=['pytest'],
     license='BSD 3-Clause',
     classifiers=[
